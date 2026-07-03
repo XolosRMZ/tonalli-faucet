@@ -240,6 +240,24 @@ export default function App() {
           <div><span>Claims</span><strong>{status?.totalClaims ?? 0}</strong></div>
         </div>
 
+        <div className="tutorialBox" aria-labelledby="tutorialTitle">
+          <h2 id="tutorialTitle">¿Cómo recibir tus XEC?</h2>
+          <ol>
+            <li>
+              Crea tu billetera web en{" "}
+              <a href="https://app.tonalli.cash" target="_blank" rel="noreferrer">
+                Tonalli Wallet (app.tonalli.cash)
+              </a>.
+            </li>
+            <li>Haz clic en el botón <strong>Conectar Tonalli Wallet</strong> de abajo.</li>
+            <li>
+              <strong>Desde el celular:</strong> se abrirá Tonalli automáticamente.<br />
+              <strong>Desde PC:</strong> escanea el código QR desde tu celular o usa WalletConnect dentro de Tonalli.
+            </li>
+            <li>Cumple con los requisitos indicados abajo y presiona <strong>Recibir XEC</strong>.</li>
+          </ol>
+        </div>
+
         <button className="primaryButton" type="button" onClick={onConnect} disabled={isBusy}>
           Conectar Tonalli Wallet
         </button>
