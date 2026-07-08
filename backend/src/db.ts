@@ -256,6 +256,19 @@ export function markSocialClaimNeedsReview(
   `).run(errorMsg, provider, providerUserId, targetId);
 }
 
+export function markSocialClaimFailed(
+  provider: string,
+  providerUserId: string,
+  targetId: string,
+  errorMsg: string
+): void {
+  db.prepare(`
+    UPDATE social_claims
+    SET status = 'failed', error = ?, txid = NULL, completed_at = NULL
+    WHERE provider = ? AND provider_user_id = ? AND target_id = ?
+  `).run(errorMsg, provider, providerUserId, targetId);
+}
+
 export type SocialAuthSessionRow = {
   nonce: string;
   provider: string;

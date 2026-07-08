@@ -12,12 +12,13 @@ import {
   getStarterPackStats,
   insertClaimEvent,
   insertStarterPackClaim,
+  markSocialClaimFailed,
   markSocialClaimNeedsReview,
   reserveSocialClaim,
   updateStarterPackClaim,
   upsertClaim
 } from "../db.js";
-import { sendRmzToAddress, sendXecToAddress } from "../services/bitcoinAbcRpc.js";
+import { isBitcoinAbcRpcError, sendRmzToAddress, sendXecToAddress } from "../services/bitcoinAbcRpc.js";
 import { verifyRmzGate } from "../services/rmzGate.js";
 import { verifyTurnstileToken } from "../services/turnstile.js";
 import { cleanTwitterHandle, verifyRetweetAndGetUserId } from "../services/twitter.js";
@@ -366,7 +367,13 @@ faucetRouter.post("/claim", ipClaimLimiter, addressLimiter, async (req, res, nex
       txid = await sendXecToAddress(address, config.claimAmountXec);
     } catch (error) {
       if (hasSocialReservation && socialProvider && socialUserId && socialTargetId) {
-        markSocialClaimNeedsReview(socialProvider, socialUserId, socialTargetId, errorMessage(error));
+        if (isBitcoinAbcRpcError(error) && !error.broadcastMayHaveOccurred) {
+          markSocialClaimFailed(socialProvider, socialUserId, socialTargetId, error.internalDetail);
+        } else if (isBitcoinAbcRpcError(error)) {
+          markSocialClaimNeedsReview(socialProvider, socialUserId, socialTargetId, error.internalDetail);
+        } else {
+          markSocialClaimNeedsReview(socialProvider, socialUserId, socialTargetId, errorMessage(error));
+        }
       }
       throw error;
     }
