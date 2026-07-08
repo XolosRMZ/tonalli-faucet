@@ -372,7 +372,7 @@ faucetRouter.post("/claim", ipClaimLimiter, addressLimiter, async (req, res, nex
         } else if (isBitcoinAbcRpcError(error)) {
           markSocialClaimNeedsReview(socialProvider, socialUserId, socialTargetId, error.internalDetail);
         } else {
-          markSocialClaimNeedsReview(socialProvider, socialUserId, socialTargetId, errorMessage(error));
+          markSocialClaimNeedsReview(socialProvider, socialUserId, socialTargetId, "Unexpected error after social claim reservation");
         }
       }
       throw error;
@@ -416,7 +416,7 @@ faucetRouter.post("/claim", ipClaimLimiter, addressLimiter, async (req, res, nex
       rmzGatePassed,
       createdAt: now,
       status: "error",
-      error: errorMessage(error)
+      error: error instanceof AppError ? errorMessage(error) : "Internal error"
     });
     next(error);
   }

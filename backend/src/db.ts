@@ -239,7 +239,7 @@ export function completeSocialClaim(
   db.prepare(`
     UPDATE social_claims
     SET status = 'completed', txid = ?, completed_at = ?, error = NULL
-    WHERE provider = ? AND provider_user_id = ? AND target_id = ?
+    WHERE provider = ? AND provider_user_id = ? AND target_id = ? AND status = 'pending'
   `).run(txid, now, provider, providerUserId, targetId);
 }
 
@@ -252,7 +252,7 @@ export function markSocialClaimNeedsReview(
   db.prepare(`
     UPDATE social_claims
     SET status = 'needs_review', error = ?
-    WHERE provider = ? AND provider_user_id = ? AND target_id = ?
+    WHERE provider = ? AND provider_user_id = ? AND target_id = ? AND status = 'pending'
   `).run(errorMsg, provider, providerUserId, targetId);
 }
 
@@ -265,7 +265,7 @@ export function markSocialClaimFailed(
   db.prepare(`
     UPDATE social_claims
     SET status = 'failed', error = ?, txid = NULL, completed_at = NULL
-    WHERE provider = ? AND provider_user_id = ? AND target_id = ?
+    WHERE provider = ? AND provider_user_id = ? AND target_id = ? AND status = 'pending'
   `).run(errorMsg, provider, providerUserId, targetId);
 }
 

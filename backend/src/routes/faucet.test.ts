@@ -19,7 +19,7 @@ process.env.TELEGRAM_TARGET_CHAT_ID = "-1001234567890";
 process.env.TELEGRAM_WEBHOOK_SECRET = "test-secret";
 process.env.IP_HASH_SECRET = "test-ip-hash-secret";
 
-const { db, createSocialAuthSession, markSocialClaimFailed, markSocialClaimNeedsReview, reserveSocialClaim, verifySocialAuthSession } = await import("../db.js");
+const { db, completeSocialClaim, createSocialAuthSession, markSocialClaimFailed, markSocialClaimNeedsReview, reserveSocialClaim, verifySocialAuthSession } = await import("../db.js");
 const { faucetRouter } = await import("./faucet.js");
 const { FAUCET_MAINTENANCE_MESSAGE } = await import("../services/bitcoinAbcRpc.js");
 
@@ -191,6 +191,108 @@ test("un registro needs_review sigue bloqueando otro intento", () => {
   assert.equal(reserveSocialClaim({ provider: "telegram", providerUserId: "2002", handle: "user", targetId, address, createdAt: new Date().toISOString() }).ok, false);
   assert.equal(socialClaim("2002").status, "needs_review");
 });
+
+test("ENOTFOUND termina en failed", async () => {
+  const result = await claimWithScenario("1008", { kind: "reject", error: connectionError("ENOTFOUND") });
+
+  assert.equal(result.status, 503);
+  assert.equal(socialClaim("1008").status, "failed");
+});
+
+test("EAI_AGAIN termina en failed", async () => {
+  const result = await claimWithScenario("1009", { kind: "reject", error: connectionError("EAI_AGAIN") });
+
+  assert.equal(result.status, 503);
+  assert.equal(socialClaim("1009").status, "failed");
+});
+
+test("HTTP 401 termina en failed y solo expone mensaje publico de mantenimiento", async () => {
+  const result = await claimWithScenario("1010", { kind: "response", response: responseJson({ error: "unauthorized" }, 401) });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, FAUCET_MAINTENANCE_MESSAGE);
+  assert.equal(result.body.detail, FAUCET_MAINTENANCE_MESSAGE);
+  assert.equal(socialClaim("1010").status, "failed");
+});
+
+test("HTTP 403 termina en failed", async () => {
+  const result = await claimWithScenario("1011", { kind: "response", response: responseJson({ error: "forbidden" }, 403) });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.body.error, FAUCET_MAINTENANCE_MESSAGE);
+  assert.equal(socialClaim("1011").status, "failed");
+});
+
+test("ECONNRESET termina en needs_review", async () => {
+  const result = await claimWithScenario("1012", { kind: "reject", error: connectionError("ECONNRESET") });
+
+  assert.equal(result.status, 503);
+  assert.equal(socialClaim("1012").status, "needs_review");
+});
+
+test("RPC -32603 termina en needs_review", async () => {
+  const result = await claimWithScenario("1013", rpcCode(-32603, "Internal wallet error"));
+
+  assert.equal(result.status, 503);
+  assert.equal(socialClaim("1013").status, "needs_review");
+});
+
+test("completed no puede degradarse a failed y conserva txid y completed_at", () => {
+  const completedAt = "2026-07-08T12:00:00.000Z";
+  const txid = "completed-txid";
+  assert.equal(reserveSocialClaim({ provider: "telegram", providerUserId: "2003", handle: "user", targetId, address, createdAt: new Date().toISOString() }).ok, true);
+  completeSocialClaim("telegram", "2003", targetId, txid, completedAt);
+
+  markSocialClaimFailed("telegram", "2003", targetId, "late failure");
+
+  const row = socialClaim("2003");
+  assert.equal(row.status, "completed");
+  assert.equal(row.txid, txid);
+  assert.equal(row.completed_at, completedAt);
+});
+
+test("completed no puede degradarse a needs_review", () => {
+  const completedAt = "2026-07-08T12:01:00.000Z";
+  const txid = "completed-review-txid";
+  assert.equal(reserveSocialClaim({ provider: "telegram", providerUserId: "2004", handle: "user", targetId, address, createdAt: new Date().toISOString() }).ok, true);
+  completeSocialClaim("telegram", "2004", targetId, txid, completedAt);
+
+  markSocialClaimNeedsReview("telegram", "2004", targetId, "late ambiguous failure");
+
+  const row = socialClaim("2004");
+  assert.equal(row.status, "completed");
+  assert.equal(row.txid, txid);
+  assert.equal(row.completed_at, completedAt);
+});
+
+test("IP privada aislada queda redactada en detalle interno RPC", async () => {
+  const privateIps = ["10.10.0.2", "127.0.0.1", "169.254.1.2", "172.16.0.4", "172.31.255.254", "192.168.1.20"];
+  const result = await claimWithScenario("1014", rpcCode(-32603, `Backend peers ${privateIps.join(" ")}`));
+
+  assert.equal(result.status, 503);
+  const row = socialClaim("1014");
+  assert.equal(row.status, "needs_review");
+  for (const ip of privateIps) {
+    assert.equal(row.error?.includes(ip), false);
+  }
+  assert.equal(row.error?.includes("[redacted-ip]"), true);
+});
+
+test("error desconocido despues de reserva social no almacena secretos", async () => {
+  const secret = "rpc-user:rpc-pass http://rpc-user:rpc-pass@10.10.0.2:8332 stack trace credential";
+  const result = await claimWithScenario("1015", { kind: "reject", error: new Error(secret) });
+
+  assert.equal(result.status, 503);
+  const row = socialClaim("1015");
+  assert.equal(row.status, "needs_review");
+  assert.equal(row.error?.includes("rpc-user"), false);
+  assert.equal(row.error?.includes("rpc-pass"), false);
+  assert.equal(row.error?.includes("10.10.0.2"), false);
+  assert.equal(row.error?.includes("http://"), false);
+  const event = db.prepare("SELECT error FROM claim_events WHERE address = ? ORDER BY id DESC LIMIT 1").get(address) as { error: string | null };
+  assert.equal(event.error, FAUCET_MAINTENANCE_MESSAGE);
+});
+
 
 test("un TXID valido termina en completed", async () => {
   const txid = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

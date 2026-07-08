@@ -48,7 +48,7 @@ function escapeRegExp(value: string): string {
 function sanitizeRpcDetail(value: string): string {
   let sanitized = value
     .replace(/https?:\/\/\S+/gi, "[redacted-url]")
-    .replace(/\b(?:10|127|169\.254|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b/g, "[redacted-ip]")
+    .replace(/\b(?:(?:10|127)\.(?:\d{1,3}\.){2}\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b/g, "[redacted-ip]")
     .replace(/[\r\n\t]+/g, " ")
     .replace(/[^\x20-\x7E]/g, "?");
 
